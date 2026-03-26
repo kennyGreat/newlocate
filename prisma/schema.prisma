@@ -1,0 +1,300 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum UserRole {
+  BUYER
+  SELLER
+  BUYER_AGENT
+  SELLER_AGENT
+  ADMIN
+}
+
+enum PropertyStatus {
+  ACTIVE
+  PENDING
+  SOLD
+  RENTED
+  WITHDRAWN
+}
+
+enum PropertyType {
+  HOUSE
+  APARTMENT
+  CONDO
+  LAND
+  COMMERCIAL
+  VILLA
+  TOWNHOUSE
+  STUDIO
+}
+
+enum ListingType {
+  SALE
+  RENT
+}
+
+enum EscrowStatus {
+  INITIATED
+  BUYER_CONFIRMED
+  SELLER_CONFIRMED
+  DOCUMENTS_VERIFIED
+  PAYMENT_RECEIVED
+  COMPLETED
+  DISPUTED
+  CANCELLED
+}
+
+enum NotificationType {
+  PROPERTY_MATCH
+  MESSAGE
+  REVIEW
+  ESCROW_UPDATE
+  SOCIAL_LISTING
+  GENERAL
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          UserRole  @default(BUYER)
+  avatar        String?
+  bio           String?
+  phone         String?
+  country       String?
+  city          String?
+  isVerified    Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Social media
+  facebookUrl   String?
+  twitterUrl    String?
+  instagramUrl  String?
+  linkedinUrl   String?
+
+  // Preferences (stored as JSON string)
+  preferences   String?
+
+  // Relations
+  properties         Property[]      @relation("OwnerProperties")
+  savedProperties    SavedProperty[]
+  sentMessages       Message[]       @relation("SentMessages")
+  chatRooms          ChatParticipant[]
+  reviewsGiven       Review[]        @relation("ReviewsGiven")
+  reviewsReceived    Review[]        @relation("ReviewsReceived")
+  notifications      Notification[]
+  buyerEscrows       Escrow[]        @relation("BuyerEscrows")
+  sellerEscrows      Escrow[]        @relation("SellerEscrows")
+  buyerAgentEscrows  Escrow[]        @relation("BuyerAgentEscrows")
+  sellerAgentEscrows Escrow[]        @relation("SellerAgentEscrows")
+  propertyRequests   PropertyRequest[]
+  agentListings      Property[]      @relation("AgentProperties")
+}
+
+model Property {
+  id            String         @id @default(cuid())
+  title         String
+  description   String
+  price         Float
+  priceUnit     String         @default("USD")
+  address       String
+  city          String
+  state         String
+  country       String
+  zipCode       String?
+  latitude      Float?
+  longitude     Float?
+  bedrooms      Int?
+  bathrooms     Int?
+  area          Float?
+  areaUnit      String         @default("sqft")
+  propertyType  PropertyType   @default(HOUSE)
+  listingType   ListingType    @default(SALE)
+  status        PropertyStatus @default(ACTIVE)
+  images        String         @default("[]")
+  amenities     String         @default("[]")
+  isVerified    Boolean        @default(false)
+  isFeatured    Boolean        @default(false)
+  viewCount     Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // External source info
+  sourceUrl     String?
+  sourcePlatform String?
+
+  // Relations
+  ownerId       String
+  owner         User           @relation("OwnerProperties", fields: [ownerId], references: [id])
+  agentId       String?
+  agent         User?          @relation("AgentProperties", fields: [agentId], references: [id])
+
+  savedBy       SavedProperty[]
+  reviews       Review[]        @relation("PropertyReviews")
+  escrows       Escrow[]
+  matches       PropertyMatch[]
+}
+
+model SavedProperty {
+  id         String   @id @default(cuid())
+  userId     String
+  propertyId String
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+  property   Property @relation(fields: [propertyId], references: [id])
+
+  @@unique([userId, propertyId])
+}
+
+model ChatRoom {
+  id           String            @id @default(cuid())
+  name         String?
+  isAnonymous  Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  participants ChatParticipant[]
+  messages     Message[]
+}
+
+model ChatParticipant {
+  id           String    @id @default(cuid())
+  chatRoomId   String
+  userId       String
+  anonymousId  String
+  joinedAt     DateTime  @default(now())
+
+  chatRoom     ChatRoom  @relation(fields: [chatRoomId], references: [id])
+  user         User      @relation(fields: [userId], references: [id])
+
+  @@unique([chatRoomId, userId])
+}
+
+model Message {
+  id           String    @id @default(cuid())
+  content      String
+  senderId     String
+  chatRoomId   String
+  anonymousId  String
+  createdAt    DateTime  @default(now())
+  isDeleted    Boolean   @default(false)
+
+  sender       User      @relation("SentMessages", fields: [senderId], references: [id])
+  chatRoom     ChatRoom  @relation(fields: [chatRoomId], references: [id])
+}
+
+model Review {
+  id           String    @id @default(cuid())
+  rating       Int
+  comment      String
+  reviewerId   String
+  revieweeId   String?
+  propertyId   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  reviewer     User      @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  reviewee     User?     @relation("ReviewsReceived", fields: [revieweeId], references: [id])
+  property     Property? @relation("PropertyReviews", fields: [propertyId], references: [id])
+}
+
+model Notification {
+  id           String           @id @default(cuid())
+  userId       String
+  type         NotificationType @default(GENERAL)
+  title        String
+  message      String
+  isRead       Boolean          @default(false)
+  data         String?
+  createdAt    DateTime         @default(now())
+
+  user         User             @relation(fields: [userId], references: [id])
+}
+
+model Escrow {
+  id                String       @id @default(cuid())
+  propertyId        String
+  buyerId           String?
+  sellerId          String?
+  buyerAgentId      String?
+  sellerAgentId     String?
+  amount            Float
+  currency          String       @default("USD")
+  status            EscrowStatus @default(INITIATED)
+  documentsVerified Boolean      @default(false)
+  buyerConfirmed    Boolean      @default(false)
+  sellerConfirmed   Boolean      @default(false)
+  notes             String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  property          Property     @relation(fields: [propertyId], references: [id])
+  buyer             User?        @relation("BuyerEscrows", fields: [buyerId], references: [id])
+  seller            User?        @relation("SellerEscrows", fields: [sellerId], references: [id])
+  buyerAgent        User?        @relation("BuyerAgentEscrows", fields: [buyerAgentId], references: [id])
+  sellerAgent       User?        @relation("SellerAgentEscrows", fields: [sellerAgentId], references: [id])
+}
+
+model PropertyRequest {
+  id           String      @id @default(cuid())
+  userId       String
+  description  String
+  minPrice     Float?
+  maxPrice     Float?
+  city         String?
+  country      String?
+  propertyType PropertyType?
+  listingType  ListingType?
+  bedrooms     Int?
+  bathrooms    Int?
+  isAnonymous  Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  user         User        @relation(fields: [userId], references: [id])
+  matches      PropertyMatch[]
+}
+
+model PropertyMatch {
+  id                String          @id @default(cuid())
+  propertyId        String
+  requestId         String
+  matchScore        Float
+  notificationSent  Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+
+  property          Property        @relation(fields: [propertyId], references: [id])
+  request           PropertyRequest @relation(fields: [requestId], references: [id])
+
+  @@unique([propertyId, requestId])
+}
+
+model SocialListing {
+  id            String   @id @default(cuid())
+  sourceUrl     String   @unique
+  sourcePlatform String
+  title         String
+  description   String?
+  price         Float?
+  location      String?
+  images        String   @default("[]")
+  contactInfo   String?
+  rawData       String?
+  isProcessed   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
